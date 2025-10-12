@@ -2,7 +2,7 @@
 
 ## Features
 
-- Support for many IP packet encapsulation variants, including: GSE, MPEG-TS, IP, and Reverse encoding
+- Support for many DVB-S2(X) IP packet encapsulation variants, including: GSE, MPEG-TS, IP, and Reverse encoding
 - Output showing packet counts for each parser
 
 ## Installation
