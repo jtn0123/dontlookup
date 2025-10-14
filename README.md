@@ -4,6 +4,7 @@
 
 - Support for many standards-compliant and proprietary DVB-S2(X) IP packet encapsulation variants, including GSE, MPEG-TS, IP, and reverse encoding.
 - Output showing packet counts for each parser
+- Driver patch for Linux TBS DVB-S2(X) receiver that enables capturing proprietary IP encapsulation (i.e., non MPEG-TS).
 
 ## Installation
 
