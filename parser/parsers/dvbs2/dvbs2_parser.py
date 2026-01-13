@@ -5,8 +5,8 @@ from tqdm import tqdm
 from io import BytesIO
 
 from parser.config import plot_dir, write_dir, logs_dir
-from parser.config import HEADER_LEVEL_NUM, PAYLOAD_LEVEL_NUM
 from parser.config import BBHEADER_LEN, ZERO_SKIP, PREVIEW_LENGTH
+from parser.utils.parser_utils import get_log_level_from_verbosity, ensure_directories_exist
 from crccheck.crc import Crc8DvbS2
 
 from parser.utils.parser_utils import ParserBase, crc32mpeg2
@@ -126,10 +126,10 @@ class DVBS2Parser(ParserBase):
                 bbframe_bytes = stream._io[pos:stream.pos()]
                 bbheader_bytes = bbframe_bytes[0:BBHEADER_LEN]
                 # self.logger.debug(bbheader_bytes.hex())
-                try: 
+                try:
                     self.check_bbheader(bbheader_bytes)
-                except:
-                    self.logger.debug(f"Invalid checksum at {pos}")
+                except AssertionError as e:
+                    self.logger.debug(f"Invalid checksum at {pos}: {e}")
                     self.consume_byte(stream, pos, pbar)
                 else: 
                     self.print_bbheader(bbframe, bbheader_bytes)
@@ -194,21 +194,10 @@ def main():
     parser.add_argument("capture_file", help="Path to the input raw capture file.")
     parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase logging verbosity. Default: INFO. -v: HEADER. -vv: DEBUG. -vvv: PAYLOAD (most verbose).")
     
-    args = parser.parse_args() # Parse command-line arguments
+    args = parser.parse_args()
 
-    if args.verbose == 0:
-        log_level = logging.INFO
-    elif args.verbose == 1:
-        log_level = HEADER_LEVEL_NUM # Use the custom level constant
-    elif args.verbose == 2:
-        log_level = PAYLOAD_LEVEL_NUM # Use the custom level constant
-    else: # args.verbose >= 3
-        log_level = logging.DEBUG 
-
-    for directory in [logs_dir, write_dir, plot_dir]:
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-            print(f"Created directory: {directory}") # Print before logger is fully initialized to console
+    log_level = get_log_level_from_verbosity(args.verbose)
+    ensure_directories_exist(logs_dir, write_dir, plot_dir)
 
     capture_file = args.capture_file
     

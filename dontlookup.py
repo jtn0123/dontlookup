@@ -18,7 +18,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 
 from parser.config import plot_dir, write_dir, logs_dir
-from parser.config import HEADER_LEVEL_NUM, PAYLOAD_LEVEL_NUM
+from parser.utils.parser_utils import get_log_level_from_verbosity
 
 from parser.parsers.dvbs2.dvbs2_parser import DVBS2Parser
 from parser.parsers.gse.gse_parser import (
@@ -31,7 +31,7 @@ from parser.parsers.ip.ip_parser import IPv4Parser
 from parser.parsers.mpegts.mpegts_parser import MpegtsParser
 from parser.parsers.mpegts.generic_crc_parser import GenericCrcParser
 from parser.parsers.mpegts.newtec_crc_parser import NewtecCrcParser
-from parser.parsers.rev.rev_parser import Reverse_Parser
+from parser.parsers.rev.rev_parser import ReverseParser
 
 
 class ParserRunner:
@@ -82,7 +82,7 @@ class ParserRunner:
         """Run DVBS2 -> Reverse -> IP."""
         print("\n=== Running: DVBS2 -> Reverse -> IP ===")
         dvbs2 = DVBS2Parser(self.capture_file, log_level=self.log_level, show_pbar=self.show_pbar)
-        rev = Reverse_Parser(dvbs2.protocol_file, log_level=self.log_level)
+        rev = ReverseParser(dvbs2.protocol_file, log_level=self.log_level)
         dvbs2.add_parser(rev)
         
         dvbs2.process_capture_file(self.capture_file)
@@ -288,16 +288,9 @@ Examples:
     )
     
     args = parser.parse_args()
-    
+
     # Set log level
-    if args.verbose == 0:
-        log_level = logging.INFO
-    elif args.verbose == 1:
-        log_level = HEADER_LEVEL_NUM
-    elif args.verbose == 2:
-        log_level = logging.DEBUG
-    else:
-        log_level = PAYLOAD_LEVEL_NUM
+    log_level = get_log_level_from_verbosity(args.verbose)
     
     # Default to 'all' if no parsers specified
     if not args.parsers:
@@ -324,28 +317,27 @@ Examples:
     
     print(f"Processing capture file: {args.capture_file}")
     print(f"Running {len(parsers_to_run)} parser(s)...")
-    
-    # Run parsers
+
+    # Parser dispatch table - maps parser names to their run methods
+    parser_dispatch = {
+        'dvbs2-ip': runner.run_dvbs2_ip,
+        'dvbs2-rev-ip': runner.run_dvbs2_rev_ip,
+        'dvbs2-mpegts': runner.run_dvbs2_mpegts,
+        'dvbs2-mpegts-crc': runner.run_dvbs2_mpegts_crc,
+        'dvbs2-mpegts-newtec': runner.run_dvbs2_mpegts_newtec,
+        'dvbs2-gse-stdlen-split-ip': lambda: runner.run_dvbs2_gse_ip('stdlen-split'),
+        'dvbs2-gse-stdlen-std-ip': lambda: runner.run_dvbs2_gse_ip('stdlen-std'),
+        'dvbs2-gse-len2-split-ip': lambda: runner.run_dvbs2_gse_ip('len2-split'),
+        'dvbs2-gse-len2-std-ip': lambda: runner.run_dvbs2_gse_ip('len2-std'),
+    }
+
+    # Run parsers using dispatch table
     for parser_name in parsers_to_run:
         try:
-            if parser_name == 'dvbs2-ip':
-                runner.run_dvbs2_ip()
-            elif parser_name == 'dvbs2-rev-ip':
-                runner.run_dvbs2_rev_ip()
-            elif parser_name == 'dvbs2-mpegts':
-                runner.run_dvbs2_mpegts()
-            elif parser_name == 'dvbs2-mpegts-crc':
-                runner.run_dvbs2_mpegts_crc()
-            elif parser_name == 'dvbs2-mpegts-newtec':
-                runner.run_dvbs2_mpegts_newtec()
-            elif parser_name == 'dvbs2-gse-stdlen-split-ip':
-                runner.run_dvbs2_gse_ip('stdlen-split')
-            elif parser_name == 'dvbs2-gse-stdlen-std-ip':
-                runner.run_dvbs2_gse_ip('stdlen-std')
-            elif parser_name == 'dvbs2-gse-len2-split-ip':
-                runner.run_dvbs2_gse_ip('len2-split')
-            elif parser_name == 'dvbs2-gse-len2-std-ip':
-                runner.run_dvbs2_gse_ip('len2-std')
+            if parser_name in parser_dispatch:
+                parser_dispatch[parser_name]()
+            else:
+                print(f"Unknown parser: {parser_name}", file=sys.stderr)
         except Exception as e:
             print(f"\nError running parser '{parser_name}': {e}", file=sys.stderr)
             import traceback

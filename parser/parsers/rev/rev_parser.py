@@ -5,13 +5,13 @@ from tqdm import tqdm
 from io import BytesIO
 
 from parser.config import plot_dir, write_dir, logs_dir
-from parser.config import HEADER_LEVEL_NUM, PAYLOAD_LEVEL_NUM
+from parser.utils.parser_utils import get_log_level_from_verbosity, ensure_directories_exist
 
 from parser.utils.parser_utils import ParserBase, flip_bytes
 from parser.parsers.gse.gse_parser import StandardGSEParser, HdrlenGSEParser
 from parser.parsers.dvbs2.dvbs2_parser import MemoryViewReader
 
-class Reverse_Parser(ParserBase):
+class ReverseParser(ParserBase):
     def __init__(self, read_file, show_pbar=False, log_level=logging.INFO):
         super().__init__(read_file, protocol='rev', show_pbar=show_pbar, log_level=log_level)
         # add custom variables here
@@ -62,25 +62,14 @@ def main():
     parser.add_argument("capture_file", help="Path to the input raw capture file.")
     parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase logging verbosity. Default: INFO. -v: HEADER. -vv: DEBUG. -vvv: PAYLOAD (most verbose).")
     
-    args = parser.parse_args() # Parse command-line arguments
+    args = parser.parse_args()
 
-    if args.verbose == 0:
-        log_level = logging.INFO
-    elif args.verbose == 1:
-        log_level = HEADER_LEVEL_NUM # Use the custom level constant
-    elif args.verbose == 2:
-        log_level = PAYLOAD_LEVEL_NUM # Use the custom level constant
-    else: # args.verbose >= 3
-        log_level = logging.DEBUG 
-
-    for directory in [logs_dir, write_dir, plot_dir]:
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-            print(f"Created directory: {directory}") # Print before logger is fully initialized to console
+    log_level = get_log_level_from_verbosity(args.verbose)
+    ensure_directories_exist(logs_dir, write_dir, plot_dir)
 
     capture_file = args.capture_file
     
-    rev = Reverse_Parser(capture_file, log_level=log_level)
+    rev = ReverseParser(capture_file, log_level=log_level)
     rev.process_capture_file(capture_file)
     # rev.log_status()
     rev.done_processing()
