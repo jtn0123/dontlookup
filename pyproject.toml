@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dontlookup"
+version = "0.1.0"
+description = "DVB-S2(X) IP packet encapsulation parser for satellite signal analysis"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+keywords = ["dvb-s2", "satellite", "parser", "gse", "mpeg-ts", "pcap"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: System :: Networking",
+]
+
+dependencies = [
+    "kaitaistruct>=0.10,<0.12",
+    "dpkt>=1.9.8,<2.0",
+    "crccheck>=1.3,<2.0",
+    "scapy>=2.5.0,<3.0",
+    "tqdm>=4.65.0,<5.0",
+]
+
+[project.optional-dependencies]
+plot = [
+    "matplotlib>=3.7.0,<4.0",
+]
+crypto = [
+    "cryptography>=41.0.0,<43.0",
+]
+dev = [
+    "pytest>=7.0,<9.0",
+    "pytest-cov>=4.0,<6.0",
+    "black>=23.0,<25.0",
+    "isort>=5.12,<6.0",
+    "mypy>=1.0,<2.0",
+]
+all = [
+    "dontlookup[plot,crypto,dev]",
+]
+
+[project.scripts]
+dontlookup = "dontlookup:main"
+
+[project.urls]
+Homepage = "https://github.com/jtn0123/dontlookup"
+Repository = "https://github.com/jtn0123/dontlookup"
+Issues = "https://github.com/jtn0123/dontlookup/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["parser*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311", "py312"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+    | \.venv
+    | build
+    | dist
+    | output
+    | logs
+    | plots
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip = [".git", ".venv", "build", "dist", "output", "logs", "plots"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = [
+    "output/",
+    "logs/",
+    "plots/",
+    "build/",
+    "dist/",
+]

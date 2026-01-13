@@ -3,7 +3,7 @@ kaitaistruct>=0.10
 dpkt>=1.9.8
 
 # CRC calculations
-crccheck>=2.2
+crccheck>=1.3
 
 # Network packet manipulation
 scapy>=2.5.0

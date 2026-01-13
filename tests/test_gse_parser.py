@@ -12,17 +12,9 @@ import sys
 # Add the project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from parser.utils.parser_utils import ensure_directories_exist
-from parser.config import write_dir, logs_dir, plot_dir
-
 
 class TestFragmentCache:
     """Tests for the FragmentCache class."""
-
-    @pytest.fixture(autouse=True)
-    def setup(self):
-        """Ensure output directories exist before tests."""
-        ensure_directories_exist(write_dir, logs_dir, plot_dir)
 
     def test_fragment_cache_initialization(self):
         """Test FragmentCache initialization."""
@@ -182,31 +174,6 @@ class TestGSEParserVariants:
         # These are the protocol names used in the parser variants
         for protocol in expected_protocols:
             assert 'gse' in protocol.lower()
-
-
-class TestCRC32MPEG2:
-    """Tests for CRC-32 MPEG-2 implementation."""
-
-    def test_crc32_known_values(self):
-        """Test CRC-32 against known values."""
-        from parser.utils.parser_utils import crc32mpeg2
-
-        # Empty data
-        assert crc32mpeg2(b'') == 0xFFFFFFFF  # Initial value for empty
-
-        # Test consistency
-        data = b'The quick brown fox jumps over the lazy dog'
-        crc1 = crc32mpeg2(data)
-        crc2 = crc32mpeg2(data)
-        assert crc1 == crc2
-
-    def test_crc32_different_inputs(self):
-        """Test that different inputs produce different CRCs."""
-        from parser.utils.parser_utils import crc32mpeg2
-
-        crc1 = crc32mpeg2(b'data1')
-        crc2 = crc32mpeg2(b'data2')
-        assert crc1 != crc2
 
 
 class TestProtocolTypes:

@@ -3,7 +3,6 @@ import time
 import socket
 from kaitaistruct import KaitaiStream, BytesIO
 import sys
-import time
 from datetime import datetime
 import random
 import argparse
@@ -11,13 +10,21 @@ import os
 import logging
 import mmap
 from tqdm import tqdm
-from cryptography import x509
-from cryptography.hazmat.backends import default_backend
 from multiprocessing import get_context, Pool, freeze_support, current_process
 from collections import defaultdict, Counter, deque
 from parser.utils.pcaplib import Writer
 from scapy.all import *
 load_layer("tls")
+
+# Optional cryptography import for TLS certificate parsing
+try:
+    from cryptography import x509
+    from cryptography.hazmat.backends import default_backend
+    CRYPTOGRAPHY_AVAILABLE = True
+except ImportError:
+    CRYPTOGRAPHY_AVAILABLE = False
+    x509 = None
+    default_backend = None
 
 from parser.config import PAYLOAD_LEVEL_NUM, HEADER_LEVEL_NUM
 from parser.config import BBHEADER_LEN, MPEG_TS_SYNC_BYTE, IP_HEADER_MIN_SIZE, GSE_HEADER_MIN_LEN
@@ -86,12 +93,22 @@ def initialize_custom_logging_levels():
         logging.Logger.header = header
 
 
-def parse_tls_cert(cert_bytes):
+def parse_tls_cert(cert_bytes: bytes) -> None:
     """
     Parse and print details from a DER-encoded TLS certificate.
-    
-    :param cert_bytes: bytes - DER-encoded certificate data
+
+    Args:
+        cert_bytes: DER-encoded certificate data
+
+    Note:
+        Requires cryptography. Install with: pip install dontlookup[crypto]
     """
+    if not CRYPTOGRAPHY_AVAILABLE:
+        logging.warning(
+            "cryptography not available. Install with: pip install dontlookup[crypto]"
+        )
+        return
+
     try:
         cert = x509.load_der_x509_certificate(cert_bytes, backend=default_backend())
 
@@ -180,29 +197,53 @@ def open_file_writer(filename):
 def close_file_writer(file_writer):
     file_writer.close()
 
-import matplotlib.pyplot as plt
 
-def plot_skips(file_name, skips):
+# Optional matplotlib import for plotting functionality
+try:
+    import matplotlib.pyplot as plt
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    plt = None
+
+
+def plot_skips(file_name: str, skips: dict) -> None:
+    """
+    Generate a visualization of skipped byte ranges in the capture file.
+
+    Args:
+        file_name: Base name for the output plot file
+        skips: Dictionary mapping start positions to end positions of skipped ranges
+
+    Note:
+        Requires matplotlib. Install with: pip install dontlookup[plot]
+    """
+    if not MATPLOTLIB_AVAILABLE:
+        logging.warning(
+            "matplotlib not available. Install with: pip install dontlookup[plot]"
+        )
+        return
+
     max_index = max(skips.values(), default=0)
-    
+
     plt.figure(figsize=(20, 3))
-    
+
     current_pos = 0
     for start, end in sorted(skips.items()):
         if start > current_pos:
             plt.fill_between([current_pos, start], 0, 1, color='g')
         plt.fill_between([start, end], 0, 1, color='r')
         current_pos = end + 1
-    
+
     if current_pos <= max_index:
         plt.fill_between([current_pos, max_index], 0, 1, color='g')
-    
+
     plt.title(f"Skipped Ranges in {os.path.basename(file_name)}")
     plt.xlabel("Index in File")
     plt.yticks([])
     plt.xlim(0, max_index)
     plt.ylim(0, 1)
-    
+
     plot_filename = f"{file_name}.png"
     plt.savefig(plot_filename, bbox_inches='tight')
     plt.close()
