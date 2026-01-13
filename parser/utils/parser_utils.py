@@ -23,6 +23,44 @@ from parser.config import PAYLOAD_LEVEL_NUM, HEADER_LEVEL_NUM
 from parser.config import BBHEADER_LEN, MPEG_TS_SYNC_BYTE, IP_HEADER_MIN_SIZE, GSE_HEADER_MIN_LEN
 from parser.config import write_dir, plot_dir, logs_dir
 
+
+def get_log_level_from_verbosity(verbose_count: int) -> int:
+    """
+    Convert a verbosity count (from argparse -v flags) to a logging level.
+
+    Args:
+        verbose_count: Number of -v flags specified (0, 1, 2, 3+)
+
+    Returns:
+        Appropriate logging level integer
+
+    Examples:
+        0 -> logging.INFO (20)
+        1 -> HEADER_LEVEL_NUM (15)
+        2 -> logging.DEBUG (10)
+        3+ -> PAYLOAD_LEVEL_NUM (5)
+    """
+    if verbose_count == 0:
+        return logging.INFO
+    elif verbose_count == 1:
+        return HEADER_LEVEL_NUM
+    elif verbose_count == 2:
+        return logging.DEBUG
+    else:
+        return PAYLOAD_LEVEL_NUM
+
+
+def ensure_directories_exist(*directories: str) -> None:
+    """
+    Ensure that the specified directories exist, creating them if necessary.
+
+    Args:
+        *directories: Variable number of directory paths to create
+    """
+    for directory in directories:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
 def initialize_custom_logging_levels():
     """
     Defines custom logging levels (PAYLOAD, HEADER) and adds convenience methods
@@ -171,32 +209,63 @@ def plot_skips(file_name, skips):
 
 
 class ParserBase:
-    def __init__(self, read_file, protocol, show_pbar=False, log_level=logging.INFO):
+    """
+    Base class for all protocol parsers in the DVB-S2 framework.
+
+    This class provides common functionality for parsing capture files,
+    including file I/O, logging, progress tracking, and statistics.
+
+    Attributes:
+        read_file: Base name of the input file being processed
+        protocol: Protocol identifier string (e.g., 'dvbs2', 'ip', 'gse')
+        show_pbar: Whether to show progress bars during processing
+        log_level: Logging verbosity level
+        protocol_file: Path to output file for parsed protocol data
+        skips_file: Path to output file for skipped/unparsed data
+        bytes_searched: Total bytes examined during parsing
+        bytes_skipped: Bytes that couldn't be parsed
+        parsers: List of chained downstream parsers
+    """
+
+    def __init__(
+        self,
+        read_file: str,
+        protocol: str,
+        show_pbar: bool = False,
+        log_level: int = logging.INFO
+    ) -> None:
+        """
+        Initialize a parser instance.
+
+        Args:
+            read_file: Path to the input capture file
+            protocol: Protocol identifier for output file naming
+            show_pbar: Enable progress bar display
+            log_level: Logging level (use logging constants or custom levels)
+        """
         self.read_file = os.path.basename(read_file)
         self.protocol = protocol
         self.show_pbar = show_pbar
         self.log_level = log_level
-        
+
         self.plot_file = plot_dir + self.read_file + f".{protocol}"
         self.protocol_file = write_dir + self.read_file + f".{protocol}"
         self.skips_file = write_dir + self.read_file + f".not_{protocol}"
-        
+
         self.log_file = logs_dir + self.read_file + f".{protocol}.log"
 
         self.write_protocol = open_file_writer(self.protocol_file)
         self.write_skips = open_file_writer(self.skips_file)
-        
+
         self.logger = create_file_logger(self.log_file, level=log_level)
-                                       
-        self.bytes_searched = 0
-        self.bytes_skipped = 0
-        
-        # self.num_protocol = 0
-        self.skips = {}
-        
-        self.parsers = []
-        pass
-    def reset(self):
+
+        self.bytes_searched: int = 0
+        self.bytes_skipped: int = 0
+        self.skips: dict = {}
+        self.parsers: list = []
+
+    def reset(self) -> None:
+        """Reset the parser state for reprocessing a file."""
         self.bytes_searched = 0
         self.bytes_skipped = 0
         self.skips = {}
@@ -204,62 +273,92 @@ class ParserBase:
         self.write_protocol = open_file_writer(self.protocol_file)
         self.write_skips = open_file_writer(self.skips_file)
         self.logger = create_file_logger(self.log_file, level=self.log_level)
-    def add_parser(self, parser):
+
+    def add_parser(self, parser: 'ParserBase') -> None:
+        """
+        Add a downstream parser to the processing chain.
+
+        Args:
+            parser: Parser instance to receive extracted data
+        """
         self.parsers.append(parser)
-    def process_capture(self, capture):
+
+    def process_capture(self, capture) -> None:
+        """
+        Process capture data. Override in subclasses.
+
+        Args:
+            capture: Memory-mapped file content or bytes-like object
+        """
         pass
-    def process_capture_file(self, capture_file, preview_len=None):
+
+    def process_capture_file(
+        self,
+        capture_file: str,
+        preview_len: int = None
+    ) -> None:
+        """
+        Open and process a capture file using memory mapping.
+
+        Args:
+            capture_file: Path to the capture file
+            preview_len: Optional limit on bytes to process (for previewing)
+        """
         try:
             with open(capture_file, 'rb') as f:
                 if preview_len is not None:
-                    file_size = f.seek(0, 2)  # Seek to the end to get the file size
+                    file_size = f.seek(0, 2)
                     preview_len = min(preview_len, file_size)
-                    f.seek(0)  # Reset to the beginning of the file
+                    f.seek(0)
                     with mmap.mmap(f.fileno(), preview_len, access=mmap.ACCESS_READ) as capture:
                         self.process_capture(capture)
                 else:
                     with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as capture:
                         self.process_capture(capture)
         except FileNotFoundError:
-            self.logger.info(f"Error: The file '{capture_file}' does not exist.")
-            return None  # Return None if the file does not exist
+            self.logger.error(f"File not found: '{capture_file}'")
         except Exception as e:
-            self.logger.info(f"An unexpected error occurred: {e}")
-            return None  # Return None in case of other errors
-    def done_processing(self):
+            self.logger.error(f"Error processing file: {e}")
+
+    def done_processing(self) -> None:
+        """Clean up resources after processing is complete."""
         close_file_writer(self.write_protocol)
         close_file_writer(self.write_skips)
-    def plot_skips(self):
+
+    def plot_skips(self) -> None:
+        """Generate a visualization of skipped byte ranges."""
         plot_skips(self.plot_file, self.skips)
-    def log_status(self, logger=None):
-        logger = self.logger if logger == None else logger
+
+    def log_status(self, logger: logging.Logger = None) -> None:
+        """
+        Log parsing statistics.
+
+        Args:
+            logger: Optional alternative logger to use
+        """
+        logger = self.logger if logger is None else logger
         logger.info(f"After running the {self.protocol.upper()} Parser on {self.read_file}")
         logger.info(f"{self.bytes_skipped} bytes were skipped in a {self.bytes_searched} byte search space")
         if self.bytes_searched == 0:
             logger.info(f"{self.protocol.upper()} Parser was initialized, but never called")
         else:
-            logger.info(f"{((self.bytes_searched-self.bytes_skipped)/self.bytes_searched)*100}% of the capture is {self.protocol.upper()} compliant")
+            compliance = ((self.bytes_searched - self.bytes_skipped) / self.bytes_searched) * 100
+            logger.info(f"{compliance:.2f}% of the capture is {self.protocol.upper()} compliant")
         logger.debug(f"num_bytes_searched {self.bytes_searched}")
         logger.debug(f"num_bytes_skipped {self.bytes_skipped}")
-    def get_compliance(self):
-        if self.bytes_searched == 0: return 0
-        return (self.bytes_searched-self.bytes_skipped)/self.bytes_searched
-    def can_parse(self):
+    def get_compliance(self) -> float:
+        """
+        Calculate the compliance ratio of the parsed data.
+
+        Returns:
+            Float between 0 and 1 representing the fraction of bytes
+            that were successfully parsed (not skipped).
+        """
         if self.bytes_searched == 0:
-            return False
-        if self.num_gse_packets > 0:
-            if self.bytes_skipped == 0: 
-                return True
-            
-            self.logger.info(f"{(self.bytes_searched-self.bytes_skipped)/self.bytes_searched}")   
-            if (self.bytes_searched - self.bytes_skipped)/self.bytes_searched >= .9999:
-                return True
-            return False
-        else: 
-            return False
-        
-        
-import os
+            return 0.0
+        return (self.bytes_searched - self.bytes_skipped) / self.bytes_searched
+
+
 import json
 
 class ParserResults:

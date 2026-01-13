@@ -5,7 +5,8 @@ from tqdm import tqdm
 from collections import Counter
 
 from parser.config import plot_dir, write_dir, logs_dir, promising_dir
-from parser.config import HEADER_LEVEL_NUM, PAYLOAD_LEVEL_NUM, PREVIEW_LENGTH
+from parser.config import PREVIEW_LENGTH
+from parser.utils.parser_utils import get_log_level_from_verbosity, ensure_directories_exist
 
 from parser.utils.parser_utils import ParserBase, crc32mpeg2, create_file_logger, open_file_writer, close_file_writer
 from kaitaistruct import KaitaiStream
@@ -76,11 +77,8 @@ class FragmentCache:
                     if total_length >= len(reassembled_pdu):
                         try:
                             self.check_pdu(reassembled_pdu)
-
-                        except:
-                            self.logger.debug("CRC FAILS")
-                            pass
-
+                        except AssertionError as e:
+                            self.logger.debug(f"CRC FAILS: {e}")
                         else:
                             self.logger.debug("CRC SUCCEEDS")
 
@@ -99,46 +97,18 @@ class FragmentCache:
         return None
 
     def log_status(self, logger=None):
-
-        logger = self.logger if logger == None else logger
-
-        # if self.can_parse():
-
-        #     logger.info(f"{self.num_reassembled} PDUS were reassembled")
-
-        #     logger.info(f"{self.num_collisions} collisions occured")
-
-        #     logger.info(f"This reassembly scheme was sucessful")
-
-        # else:
-
-        #     logger.info(f"This reassembly scheme was not sucessful")
-
+        logger = self.logger if logger is None else logger
         logger.debug(f"num_fragments {self.num_fragments}")
-
         logger.debug(f"num_collisions {self.num_collisions}")
-
         logger.debug(f"num_reassembled {self.num_reassembled}")
-
         logger.debug(f"num_start_fragments {self.num_start_fragments}")
 
     def can_parse(self):
-
         if self.num_reassembled == 0:
-
             return False
-
         if self.num_start_fragments == 0:
-
             return False
-
-        if self.num_reassembled/self.num_start_fragments > .1:
-
-            return True
-
-        else:
-
-            return False
+        return self.num_reassembled / self.num_start_fragments > 0.1
 
 
 class GSEParserBase(ParserBase):
@@ -277,17 +247,17 @@ class HdrlenGSEParser(GSEParserBase):
                 gse_packet = GseHdrlen(stream)
             except Exception as e:
                 self.logger.debug(f"Parse error at {pos}: {e}")
-                try: 
+                try:
                     gse_packet = GseHdrlenUnsafe(stream)
-                except: 
-                    self.logger.debug(f"Parse error at {pos}: {e}")
+                except Exception as e2:
+                    self.logger.debug(f"Unsafe parse error at {pos}: {e2}")
                     self.consume_byte(stream, pos, pbar)
-                else: 
+                else:
                     gse_packet_bytes = stream._io[pos:stream.pos()]
                     self.logger.payload(gse_packet_bytes.hex())
                     self.consume_bytes(len(gse_packet_bytes))
                     self.count(gse_packet)
-            else:    
+            else:
                 gse_packet_bytes = stream._io[pos:stream.pos()]
                 self.consume_bytes(len(gse_packet_bytes), pbar)
                 self.count(gse_packet)
@@ -307,6 +277,7 @@ class HdrlenGSEParser(GSEParserBase):
                 else:
                     if (frag := self.split_fragment_cache.update(gse_packet)):
                         self.write_split_fragment_cache.write(frag)
+
 
 class StandardLenSplitCacheGSEParser(GSEParserBase):
     def __init__(self, read_file, protocol='gse', show_pbar=False, log_level=logging.INFO):
@@ -445,17 +416,17 @@ class Len2SplitCacheGSEParser(GSEParserBase):
                 gse_packet = GseHdrlen(stream)
             except Exception as e:
                 self.logger.debug(f"Parse error at {pos}: {e}")
-                try: 
+                try:
                     gse_packet = GseHdrlenUnsafe(stream)
-                except: 
-                    self.logger.debug(f"Parse error at {pos}: {e}")
+                except Exception as e2:
+                    self.logger.debug(f"Unsafe parse error at {pos}: {e2}")
                     self.consume_byte(stream, pos, pbar)
-                else: 
+                else:
                     gse_packet_bytes = stream._io[pos:stream.pos()]
                     self.logger.payload(gse_packet_bytes.hex())
                     self.consume_bytes(len(gse_packet_bytes))
                     self.count(gse_packet)
-            else:    
+            else:
                 gse_packet_bytes = stream._io[pos:stream.pos()]
                 self.consume_bytes(len(gse_packet_bytes), pbar)
                 self.count(gse_packet)
@@ -465,7 +436,7 @@ class Len2SplitCacheGSEParser(GSEParserBase):
                     if gse_packet.is_whole:
                         self.write_protocol.write(gse_packet.payload.data)
                         self.protocol_types.update([gse_packet.payload.protocol_type])
-                    else: 
+                    else:
                         self.bytes_skipped += len(gse_packet.payload.data)
                 try:
                     gse_packet = GseHdrlenSplit.from_bytes(gse_packet_bytes)
@@ -476,14 +447,17 @@ class Len2SplitCacheGSEParser(GSEParserBase):
                         self.write_split_fragment_cache.write(frag)
                         self.write_protocol.write(frag)
                         self.bytes_skipped -= len(frag)
+
     def done_processing(self):
         super().done_processing()
         close_file_writer(self.write_split_fragment_cache)
+
     def log_status(self, logger=None):
         super().log_status(self.logger)
         self.split_fragment_cache.log_status(self.logger)
         self.split_fragment_cache.log_status()
-    pass
+
+
 class Len2StandardCacheGSEParser(GSEParserBase):
     def __init__(self, read_file, protocol='gse', show_pbar=False, log_level=logging.INFO):
         super().__init__(read_file, protocol=protocol, show_pbar=show_pbar, log_level=log_level)
@@ -505,17 +479,17 @@ class Len2StandardCacheGSEParser(GSEParserBase):
                 gse_packet = GseHdrlen(stream)
             except Exception as e:
                 self.logger.debug(f"Parse error at {pos}: {e}")
-                try: 
+                try:
                     gse_packet = GseHdrlenUnsafe(stream)
-                except: 
-                    self.logger.debug(f"Parse error at {pos}: {e}")
+                except Exception as e2:
+                    self.logger.debug(f"Unsafe parse error at {pos}: {e2}")
                     self.consume_byte(stream, pos, pbar)
-                else: 
+                else:
                     gse_packet_bytes = stream._io[pos:stream.pos()]
                     self.logger.payload(gse_packet_bytes.hex())
                     self.consume_bytes(len(gse_packet_bytes))
                     self.count(gse_packet)
-            else:    
+            else:
                 gse_packet_bytes = stream._io[pos:stream.pos()]
                 self.consume_bytes(len(gse_packet_bytes), pbar)
                 self.count(gse_packet)
@@ -525,47 +499,34 @@ class Len2StandardCacheGSEParser(GSEParserBase):
                     if gse_packet.is_whole:
                         self.write_protocol.write(gse_packet.payload.data)
                         self.protocol_types.update([gse_packet.payload.protocol_type])
-                    else: 
+                    else:
                         self.bytes_skipped += len(gse_packet.payload.data)
                         if (frag := self.fragment_cache.update(gse_packet)):
                             self.write_fragment_cache.write(frag)
                             self.write_protocol.write(frag)
                             self.bytes_skipped -= len(frag)
+
     def done_processing(self):
         super().done_processing()
         close_file_writer(self.write_fragment_cache)
+
     def log_status(self, logger=None):
         super().log_status(self.logger)
         self.fragment_cache.log_status(self.logger)
         self.fragment_cache.log_status()
 
 
-    pass
-
 def main():
     parser = argparse.ArgumentParser(description="Process GSE capture files with custom logging verbosity.")
     parser.add_argument("capture_file", help="Path to the input raw capture file.")
     parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase logging verbosity. Default: INFO. -v: HEADER. -vv: DEBUG. -vvv: PAYLOAD (most verbose).")
     
-    args = parser.parse_args() # Parse command-line arguments
+    args = parser.parse_args()
 
-    if args.verbose == 0:
-        log_level = logging.INFO
-    elif args.verbose == 1:
-        log_level = HEADER_LEVEL_NUM # Use the custom level constant
-    elif args.verbose == 2:
-        log_level = PAYLOAD_LEVEL_NUM # Use the custom level constant
-    else: # args.verbose >= 3
-        log_level = logging.DEBUG 
-
-    for directory in [logs_dir, write_dir, plot_dir]:
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-            print(f"Created directory: {directory}") # Print before logger is fully initialized to console
+    log_level = get_log_level_from_verbosity(args.verbose)
+    ensure_directories_exist(logs_dir, write_dir, plot_dir)
 
     capture_file = args.capture_file
-    
-    print(log_level)
     STDLEN_SPLITCACHE_GSE = StandardLenSplitCacheGSEParser(capture_file, protocol='stdlen.split.gse', log_level=log_level)
     STDLEN_STDCACHE_GSE = StandardLenStandardCacheGSEParser(capture_file, protocol='stdlen.std.gse', log_level=log_level)
     LEN2_SPLITCACHE_GSE = Len2SplitCacheGSEParser(capture_file, protocol='len2.split.gse', log_level=log_level)

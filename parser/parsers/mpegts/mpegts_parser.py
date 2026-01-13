@@ -6,8 +6,8 @@ import argparse
 from tqdm import tqdm
 
 from parser.config import plot_dir, write_dir, logs_dir
-from parser.config import HEADER_LEVEL_NUM, PAYLOAD_LEVEL_NUM
 from parser.config import MPEG_TS_SYNC_BYTE, MPEG_FRAME_SIZE
+from parser.utils.parser_utils import get_log_level_from_verbosity, ensure_directories_exist
 
 from parser.utils.parser_utils import crc32mpeg2, create_file_logger, open_file_writer, close_file_writer
 from parser.utils.parser_utils import write_ip_packet_to_pcap, create_pcap_handler, close_pcap_handler
@@ -120,25 +120,13 @@ def main():
     parser.add_argument("capture_file", help="Path to the input raw capture file.")
     parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase logging verbosity. Default: INFO. -v: HEADER. -vv: DEBUG. -vvv: PAYLOAD (most verbose).")
     
-    args = parser.parse_args() # Parse command-line arguments
+    args = parser.parse_args()
 
-    if args.verbose == 0:
-        log_level = logging.INFO
-    elif args.verbose == 1:
-        log_level = HEADER_LEVEL_NUM # Use the custom level constant
-    elif args.verbose == 2:
-        log_level = PAYLOAD_LEVEL_NUM # Use the custom level constant
-    else: # args.verbose >= 3
-        log_level = logging.DEBUG 
-
-    for directory in [logs_dir, write_dir, plot_dir]:
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-            print(f"Created directory: {directory}") # Print before logger is fully initialized to console
+    log_level = get_log_level_from_verbosity(args.verbose)
+    ensure_directories_exist(logs_dir, write_dir, plot_dir)
 
     capture_file = args.capture_file
-    
-    
+
     mpegts = MpegtsParser(capture_file, show_pbar=True, log_level=log_level)
     mpegts.process_capture_file(capture_file)
     mpegts.log_status()

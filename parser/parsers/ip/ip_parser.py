@@ -6,8 +6,8 @@ import struct
 import socket
 
 from parser.config import plot_dir, write_dir, logs_dir
-from parser.config import HEADER_LEVEL_NUM, PAYLOAD_LEVEL_NUM
 from parser.config import IP_HEADER_MIN_SIZE, PREVIEW_LENGTH
+from parser.utils.parser_utils import get_log_level_from_verbosity, ensure_directories_exist
 from parser.utils.parser_utils import ParserBase
 from parser.utils.parser_utils import write_ip_packet_to_pcap, create_pcap_handler, close_pcap_handler
 
@@ -92,10 +92,10 @@ class IPv4Parser(ParserBase):
                 self.logger.debug(f"Candidate Ipv4Packet at {pos}")
                 
                 ip_packet_bytes = stream._io[pos:stream.pos()]
-                try: 
+                try:
                     IPv4Parser.is_valid_ipv4_checksum(ip_packet_bytes)
-                except:
-                    self.logger.debug(f"Invalid checksum at {pos}")
+                except (AssertionError, ValueError, struct.error) as e:
+                    self.logger.debug(f"Invalid checksum at {pos}: {e}")
                     advance()
                 else: 
                     self.logger.header(f"IP {ip_packet_bytes.hex()}")
@@ -127,21 +127,10 @@ def main():
     parser.add_argument("capture_file", help="Path to the input raw capture file.")
     parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase logging verbosity. Default: INFO. -v: HEADER. -vv: DEBUG. -vvv: PAYLOAD (most verbose).")
     
-    args = parser.parse_args() # Parse command-line arguments
+    args = parser.parse_args()
 
-    if args.verbose == 0:
-        log_level = logging.INFO
-    elif args.verbose == 1:
-        log_level = HEADER_LEVEL_NUM # Use the custom level constant
-    elif args.verbose == 2:
-        log_level = PAYLOAD_LEVEL_NUM # Use the custom level constant
-    else: # args.verbose >= 3
-        log_level = logging.DEBUG 
-
-    for directory in [logs_dir, write_dir, plot_dir]:
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-            print(f"Created directory: {directory}") # Print before logger is fully initialized to console
+    log_level = get_log_level_from_verbosity(args.verbose)
+    ensure_directories_exist(logs_dir, write_dir, plot_dir)
 
     capture_file = args.capture_file
     
